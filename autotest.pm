@@ -26,6 +26,7 @@ use Socket;
 use IO::Handle;
 use POSIX qw(_exit);
 use cv;
+require myjsonrpc;
 
 our %tests;        # scheduled or run tests
 our @testorder;    # for keeping them in order

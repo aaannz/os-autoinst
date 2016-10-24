@@ -52,6 +52,8 @@ use POSIX qw(:sys_wait_h _exit);
 use Carp qw(cluck);
 use Time::HiRes qw(gettimeofday tv_interval sleep);
 
+use OpenQA::testapi::server;
+
 # avoid paranoia
 $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
@@ -86,6 +88,7 @@ die "No scripts in $bmwqemu::vars{CASEDIR}" if !-e "$bmwqemu::vars{CASEDIR}";
 
 my $cpid;
 my $testpid;
+my $testapipid;
 my $cfd;
 
 my $loop = 1;
@@ -126,6 +129,17 @@ sub kill_backend {
     }
 }
 
+sub kill_testapi {
+    return unless $testapipid;
+    my $pid = $testapipid;
+    if (kill('TERM', $pid)) {
+        diag "awaiting death of testapi server $pid";
+        my $ret = waitpid($pid, 0);
+        diag "testapi process exited: $ret";
+    }
+    undef $testpid;
+}
+
 sub signalhandler {
 
     my ($sig) = @_;
@@ -134,6 +148,7 @@ sub signalhandler {
         $loop = 0;
         return;
     }
+    kill_testapi;
     kill_backend;
     kill_commands;
     kill_autotest;
@@ -238,6 +253,9 @@ bmwqemu::save_vars();
 
 my $testfd;
 ($testpid, $testfd) = autotest::start_process();
+
+my $testapifd;
+($testapipid, $testapifd) = OpenQA::testapi::server::start_process();
 
 init_backend();
 
