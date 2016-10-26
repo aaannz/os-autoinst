@@ -30,10 +30,10 @@ sub send_json {
     my $JSON = JSON->new()->convert_blessed();
     # deep copy to add a random string
     my %cmdcopy = %$cmd;
-    $cmdcopy{json_cmd_token} = bmwqemu::random_string(8);
+    $cmdcopy{json_cmd_token} = bmwqemu::random_string(8) unless $cmdcopy{json_cmd_token};
     my $json = $JSON->encode(\%cmdcopy);
 
-    #bmwqemu::diag("send_json $json");
+    bmwqemu::diag("fd: $to_fd, send_json $json");
     my $wb = syswrite($to_fd, "$json");
     confess "syswrite failed $!" unless ($wb && $wb == length($json));
     return $cmdcopy{json_cmd_token};
@@ -94,7 +94,7 @@ sub read_json {
 
         my $qbuffer;
         my $bytes = sysread($socket, $qbuffer, 8000);
-        #bmwqemu::diag("sysread $qbuffer");
+        bmwqemu::diag("sysread $qbuffer");
         if (!$bytes) { bmwqemu::diag("sysread failed: $!"); return; }
         $JSON->incr_parse($qbuffer);
     }

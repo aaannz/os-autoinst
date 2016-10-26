@@ -16,22 +16,48 @@
 package OpenQA::testapi::server;
 use strict;
 use warnings;
+use POSIX qw(_exit);
+use Socket;
 use autodie qw(:all);
 use OpenQA::testapi;
 require myjsonrpc;
 
+use Data::Dump qw/pp/;
+
 our $isotovideo;
-our $socketname = 'testapi';
+our $socketname = '/var/run/openqa-testapi';
 our $socket;
 
 my %testapi_dispatch = ();
 
+# build dispatch table from all available functions from testapi
 sub init {
-    for my $sub ( keys %OpenQA::testapi ) {
+    no strict qw/refs/;
+    for my $sub ( keys %{OpenQA::testapi::} ) {
         if (OpenQA::testapi->can($sub)) {
-            $testapi_dispatch{$sub} = &{"OpenQA::testapi::$sub"};
+            $testapi_dispatch{$sub} = \&{"OpenQA::testapi::$sub"};
         }
     }
+}
+
+sub mainloop {
+    # we should use some well known socket for us
+    while(accept(my $test, $socket)) {
+        while(my $rsp = myjsonrpc::read_json($test)) {
+            my $cmd = $rsp->{cmd};
+            my $params = $rsp->{params};
+            print "dispatching $cmd ";pp $params;
+            if ($testapi_dispatch{$cmd}) {
+                my $ret = $testapi_dispatch{$cmd}->(@$params);
+                print "response ";pp $ret;
+                myjsonrpc::send_json($test, { rsp => $ret, json_cmd_token => $rsp->{json_cmd_token}});
+            }
+            else {
+                die "Unknown command $rsp->{cmd}";
+            }
+        }
+    }
+    pp 'exiting testapi mainloop';
 }
 
 sub start_process {
@@ -60,38 +86,20 @@ sub start_process {
 
     $0 = "$0: testapi";
 
+    # init dispatch table
+    init;
+
     # open testapi socket for incomming tasks
     # this is for autotest executed test script <-> testapi comm
-    my $addr = sockaddr_un($socketname);
+    unlink($socketname) if -e $socketname;
+    my $addr = pack_sockaddr_un($socketname);
     socket($socket, PF_UNIX, SOCK_STREAM, 0);
-    unlink($socketname);
     bind($socket, $addr);
     # listen for max 1 connection at a time - from os-autoinst::autotest, possible from openQA::Worker needs first one to close
     # TODO allow concurency?
     listen($socket, 1);
 
-    my $line = <$isotovideo>;
-    if (!$line) {
-        _exit(0);
-    }
-    print "TestAPI: GOT $line\n";
     mainloop;
-}
-
-sub mainloop {
-    # we should use some well known socket for us
-    while(accept(my $test, $socket)) {
-        while(my $rsp = myjsonrpc::read_json($test)) {
-            my $cmd = $rsp->{command};
-            my @params = $rsp->{params};
-            if ($testapi_dispatch{$cmd}) {
-                $testapi_dispatch{$cmd}->(@params);
-            }
-            else {
-                die "Unknown command $rsp->{cmd}";
-            }
-        }
-    }
 }
 
 1;
