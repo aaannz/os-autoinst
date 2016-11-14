@@ -14,7 +14,7 @@
 # with this program; if not, see <http://www.gnu.org/licenses/>.
 
 package testapi;
-use strict;
+use 5.018;
 use warnings;
 use autodie qw(:all);
 use Socket;
@@ -22,9 +22,7 @@ use Socket;
 use parent qw/Exporter/;
 use Exporter;
 
-use Data::Dump qw/pp/;
-
-use OpenQA::testapi::server;
+require autotest;
 require myjsonrpc;
 
 our $AUTOLOAD;
@@ -82,7 +80,7 @@ use subs qw(
 );
 
 
-my $testapi_server;
+our $testapi_server;
 
 =head1 internal
 
@@ -91,10 +89,13 @@ my $testapi_server;
 Initialize connection to testapi server
 =cut
 sub init {
-    my $addr = pack_sockaddr_un($OpenQA::testapi::server::socketname);
+    return if $testapi_server;
+    my $addr = pack_sockaddr_un($autotest::socketname);
     socket($testapi_server, PF_UNIX, SOCK_STREAM, 0);
     connect($testapi_server, $addr);
-    OpenQA::testapi::init;
+    $testapi_server->autoflush(1);
+    my $token = myjsonrpc::send_json($testapi_server, {cmd => 'init'});
+    myjsonrpc::read_json($testapi_server, $token);
 }
 
 sub DESTROY {
@@ -108,7 +109,7 @@ Automatically forward exported functions to OpenQA::testapi through socket
 =cut
 sub AUTOLOAD {
     my $cmd = $AUTOLOAD =~ s/.*:://r;
-    die "Unknown testapi call \"$cmd\"" unless grep {$_ eq $cmd} @EXPORT;
+    die "Unknown testapi call \"$cmd\"" unless grep { $_ eq $cmd } @EXPORT;
     my $token = myjsonrpc::send_json($testapi_server, {cmd => $cmd, params => \@_});
     my $rsp = myjsonrpc::read_json($testapi_server, $token);
     return $rsp->{rsp};

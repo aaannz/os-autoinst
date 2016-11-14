@@ -19,6 +19,9 @@ use warnings;
 use POSIX qw(_exit);
 use Socket;
 use autodie qw(:all);
+use Exporter qw/import/;
+our @EXPORT_OK = qw/query_isotovideo/;
+
 use OpenQA::testapi;
 require myjsonrpc;
 
@@ -28,37 +31,7 @@ our $isotovideo;
 our $socketname = '/var/run/openqa-testapi';
 our $socket;
 
-my %testapi_dispatch = ();
 
-# build dispatch table from all available functions from testapi
-sub init {
-    no strict qw/refs/;
-    for my $sub ( keys %{OpenQA::testapi::} ) {
-        if (OpenQA::testapi->can($sub)) {
-            $testapi_dispatch{$sub} = \&{"OpenQA::testapi::$sub"};
-        }
-    }
-}
-
-sub mainloop {
-    # we should use some well known socket for us
-    while(accept(my $test, $socket)) {
-        while(my $rsp = myjsonrpc::read_json($test)) {
-            my $cmd = $rsp->{cmd};
-            my $params = $rsp->{params};
-            print "dispatching $cmd ";pp $params;
-            if ($testapi_dispatch{$cmd}) {
-                my $ret = $testapi_dispatch{$cmd}->(@$params);
-                print "response ";pp $ret;
-                myjsonrpc::send_json($test, { rsp => $ret, json_cmd_token => $rsp->{json_cmd_token}});
-            }
-            else {
-                die "Unknown command $rsp->{cmd}";
-            }
-        }
-    }
-    pp 'exiting testapi mainloop';
-}
 
 sub start_process {
     my $child;
@@ -86,22 +59,10 @@ sub start_process {
 
     $0 = "$0: testapi";
 
-    # init dispatch table
-    init;
 
-    # open testapi socket for incomming tasks
-    # this is for autotest executed test script <-> testapi comm
-    unlink($socketname) if -e $socketname;
-    my $addr = pack_sockaddr_un($socketname);
-    socket($socket, PF_UNIX, SOCK_STREAM, 0);
-    bind($socket, $addr);
-    # listen for max 1 connection at a time - from os-autoinst::autotest, possible from openQA::Worker needs first one to close
-    # TODO allow concurency?
-    listen($socket, 1);
 
     mainloop;
 }
-
 1;
 
 # vim: set sw=4 et:

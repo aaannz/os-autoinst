@@ -73,7 +73,7 @@ sub read_json {
                 return;
             }
             if ($cmd_token && ($hash->{json_cmd_token} || '') ne $cmd_token) {
-                confess "ERROR: the token does not match - questions and answers not in the right order";
+                confess "ERROR: the token does not match - questions and answers not in the right order - $cmd_token vs $hash->{json_cmd_token}";
             }
             return $hash;
         }

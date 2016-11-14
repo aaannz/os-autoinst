@@ -37,12 +37,11 @@ BEGIN {
 # either to the worker or the tests
 our $INTERFACE = 6;
 
-use bmwqemu;
+use bmwqemu qw(diag);
 use needle;
 use autotest;
 use commands;
 use distribution;
-use testapi qw(diag);
 use Getopt::Std;
 require IPC::System::Simple;
 use autodie qw(:all);
@@ -51,8 +50,6 @@ use Cwd;
 use POSIX qw(:sys_wait_h _exit);
 use Carp qw(cluck);
 use Time::HiRes qw(gettimeofday tv_interval sleep);
-
-use OpenQA::testapi::server;
 
 use Data::Dump qw/pp/;
 
@@ -90,7 +87,6 @@ die "No scripts in $bmwqemu::vars{CASEDIR}" if !-e "$bmwqemu::vars{CASEDIR}";
 
 my $cpid;
 my $testpid;
-my $testapipid;
 my $cfd;
 
 my $loop = 1;
@@ -131,17 +127,6 @@ sub kill_backend {
     }
 }
 
-sub kill_testapi {
-    return unless $testapipid;
-    my $pid = $testapipid;
-    if (kill('TERM', $pid)) {
-        diag "awaiting death of testapi server $pid";
-        my $ret = waitpid($pid, 0);
-        diag "testapi process exited: $ret";
-    }
-    undef $testpid;
-}
-
 sub signalhandler {
 
     my ($sig) = @_;
@@ -150,7 +135,6 @@ sub signalhandler {
         $loop = 0;
         return;
     }
-    kill_testapi;
     kill_backend;
     kill_commands;
     kill_autotest;
@@ -212,7 +196,7 @@ $SIG{INT}  = \&signalhandler;
 $SIG{HUP}  = \&signalhandler;
 $SIG{CHLD} = \&signalhandler_chld;
 
-# make sure all commands coming from the backend will not be in the
+# make sure all commands coming from the backend will not be in theasd
 # developers's locale - but a defined english one. This is SUSE's
 # default locale
 $ENV{LC_ALL} = 'en_US.UTF-8';
@@ -238,28 +222,21 @@ $bmwqemu::vars{TEST_GIT_HASH} = $test_git_hash;
 # is not supposed to talk to the backend directly
 ($cpid, $cfd) = commands::start_server($bmwqemu::vars{QEMUPORT} + 1);
 
-my $testapifd;
-($testapipid, $testapifd) = OpenQA::testapi::server::start_process();
-sleep 2;
-testapi::init();
-
-# add lib of the test distributions - but only for main.pm not to pollute
-# further dependencies (the tests get it through autotest)
-my @oldINC = @INC;
-unshift @INC, $bmwqemu::vars{CASEDIR} . '/lib';
-require $bmwqemu::vars{PRODUCTDIR} . "/main.pm";
-@INC = @oldINC;
-
-# set a default distribution if the tests don't have one
-$testapi::distri ||= distribution->new;
-
-# init part
-bmwqemu::save_vars();
-
+# start the autotest fork
+# autotest provides testapi server
 my $testfd;
 ($testpid, $testfd) = autotest::start_process();
 
+# start backend
+bmwqemu::load_vars();
 init_backend();
+
+myjsonrpc::send_json($testfd, {cmd => 'INIT_TESTLOADER'});
+{
+    # wait until main pm is loaded
+    my $pid = myjsonrpc::read_json($testfd);
+    waitpid $pid, 0;
+}
 
 open(my $fd, ">", "os-autoinst.pid");
 print $fd "$$\n";
@@ -285,7 +262,8 @@ $s->add($cfd);
 $s->add($bmwqemu::backend->{from_child});
 
 # now we have everything, give the tests a go
-$testfd->write("GO\n");
+myjsonrpc::send_json($testfd, {cmd => 'GO'});
+
 
 my $interactive = 0;
 my $needinput   = 0;
@@ -512,7 +490,6 @@ if (!$r && $completed && (my $nd = $bmwqemu::vars{NUMDISKS})) {
 }
 
 END {
-    kill_testapi;
     kill_backend;
     kill_commands;
     kill_autotest;
