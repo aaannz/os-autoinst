@@ -19,12 +19,12 @@ use strict;
 use warnings;
 
 use testapi ();
+use autotest qw(query_isotovideo);
 
 sub new() {
     my ($class) = @_;
 
     my $self = bless {}, $class;
-    $self->{consoles} = {};
     return $self;
 }
 
@@ -34,26 +34,7 @@ sub init {
 
 sub add_console {
     my ($self, $testapi_console, $backend_console, $backend_args) = @_;
-
-    my %class_names = (
-        'tty-console'     => 'ttyConsole',
-        'ssh-xterm'       => 'sshXtermVt',
-        'ssh-virtsh'      => 'sshVirtsh',
-        'vnc-base'        => 'vnc_base',
-        'local-Xvnc'      => 'localXvnc',
-        'ssh-iucvconn'    => 'sshIucvconn',
-        'virtio-terminal' => 'virtio_terminal'
-    );
-    my $required_type = $class_names{$backend_console} || $backend_console;
-    my $location      = "consoles/$required_type.pm";
-    my $class         = "consoles::$required_type";
-
-    require $location;
-
-    my $ret = $class->new($testapi_console, $backend_args);
-    # now the backend knows which console the testapi means with $testapi_console ("bootloader", "vnc", ...)
-    $self->{consoles}->{$testapi_console} = $ret;
-    return $ret;
+    query_isotovideo('backend_add_console', {console_name => $testapi_console, backend_console => $backend_console, args => $backend_args});
 }
 
 sub x11_start_program {

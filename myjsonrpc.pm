@@ -30,7 +30,7 @@ sub send_json {
     my $JSON = JSON->new()->convert_blessed();
     # deep copy to add a random string
     my %cmdcopy = %$cmd;
-    $cmdcopy{json_cmd_token} = bmwqemu::random_string(8);
+    $cmdcopy{json_cmd_token} = bmwqemu::random_string(8) unless $cmdcopy{json_cmd_token};
     my $json = $JSON->encode(\%cmdcopy);
 
     #bmwqemu::diag("send_json $json");

@@ -753,7 +753,7 @@ sub start_qemu {
     print $pidf $self->{pid}, "\n";
     close $pidf;
 
-    my $vnc = $testapi::distri->add_console(
+    my $vnc = $self->add_console(
         'sut',
         'vnc-base',
         {

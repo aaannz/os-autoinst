@@ -112,7 +112,7 @@ sub run {
     $self->screenshot_interval($bmwqemu::vars{SCREENSHOTINTERVAL} || .5);
     $self->update_request_interval($self->screenshot_interval());
 
-    for my $console (values %{$testapi::distri->{consoles}}) {
+    for my $console (values %{$self->{consoles}}) {
         # tell the consoles who they need to talk to (in this thread)
         $console->backend($self);
     }
@@ -499,7 +499,7 @@ sub reset_consoles {
     my ($self, $args) = @_;
 
     # we iterate through all consoles
-    for my $console (keys %{$testapi::distri->{consoles}}) {
+    for my $console (keys %{$self->{consoles}}) {
         #next if ($console eq 'x3270');
         $self->reset_console({testapi_console => $console});
     }
@@ -533,7 +533,7 @@ sub request_screen_update {
 sub console {
     my ($self, $testapi_console) = @_;
 
-    my $ret = $testapi::distri->{consoles}->{$testapi_console};
+    my $ret = $self->{consoles}->{$testapi_console};
     unless ($ret) {
         carp "console $testapi_console does not exist";
     }
@@ -1054,6 +1054,29 @@ sub stop_ssh_serial {
     $self->{serial}->disconnect;
     $self->{serial} = undef;
     return;
+}
+
+sub add_console {
+    my ($self, $testapi_console, $backend_console, $backend_args) = @_;
+
+    my %class_names = (
+        'tty-console'  => 'ttyConsole',
+        'ssh-xterm'    => 'sshXtermVt',
+        'ssh-virtsh'   => 'sshVirtsh',
+        'vnc-base'     => 'vnc_base',
+        'local-Xvnc'   => 'localXvnc',
+        'ssh-iucvconn' => 'sshIucvconn'
+    );
+    my $required_type = $class_names{$backend_console} || $backend_console;
+    my $location      = "consoles/$required_type.pm";
+    my $class         = "consoles::$required_type";
+
+    require $location;
+
+    my $ret = $class->new($testapi_console, $backend_args);
+    # now the backend knows which console the testapi means with $testapi_console ("bootloader", "vnc", ...)
+    $self->{consoles}->{$testapi_console} = $ret;
+    return $ret;
 }
 
 1;
